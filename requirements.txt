@@ -2,8 +2,8 @@
 fire>=0.1.3
 
 ## Data analysis
-# pandas
-# numpy
+pandas
+numpy
 
 ## Dev packages: development enviroment
 # NOTE: mark with #dev to ignore in setup.py
@@ -22,3 +22,20 @@ bandit #dev
 # jupyter
 # matplotlib
 # seaborn
+
+# NLP
+vaderSentiment==3.2.1
+
+# nltk==3.4.5 
+# 	Added manually in 'Dockerfile' with
+#	RUN pip install nltk==3.4.5
+#	RUN python -m nltk.downloader -d /nltk_data punkt
+
+# Dependencies
+requests
+tabulate
+colorama>=0.3.8
+future
+
+# ML
+h2o==3.28.0.3

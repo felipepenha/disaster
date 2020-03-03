@@ -15,3 +15,6 @@ COPY . ${APP_DIR}
 RUN pip --disable-pip-version-check install -e .
 RUN chmod -R a+w ${APP_DIR}
 ENTRYPOINT ["disaster"]
+
+RUN pip install nltk==3.4.5
+RUN python -m nltk.downloader -d /nltk_data punkt

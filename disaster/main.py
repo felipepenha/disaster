@@ -1,6 +1,51 @@
 import fire
 from disaster import config  # noqa
 
+from nltk.tokenize import word_tokenize
+import string
+import pandas as pd
+
+def cleaner(text):
+    """
+        Not originally included in the Neoway template.
+        Util for cleaning cunks of text for NLP tasks
+    """
+
+    # split into words
+    tokens = word_tokenize(text)
+
+    # convert to lower case
+    tokens = [w.lower() for w in tokens]
+
+    # remove punctuation from each word
+    table = str.maketrans('', '', string.punctuation)
+    stripped = [w.translate(table) for w in tokens]
+
+    # remove remaining tokens that are not alphabetic
+    words = [word for word in stripped if word.isalpha()]
+
+    return words
+
+def clean_text(**kwargs):
+    """
+        Not originally included in the Neoway template.
+        Clean tabular text for NLP tasks
+    """
+
+    # load data
+
+    for s in ['train', 'test']:
+
+        path = '{0}/nlp-getting-started/{1}.csv'.format(config.data_path, s)
+
+        df = pd.read_csv(path)
+
+        df['tokens'] = df.apply(lambda row: cleaner(row['text']), axis=1)
+
+        path = path.replace('.csv', '_clean.csv')
+
+        df.to_csv(path, index=False)
+
 
 def features(**kwargs):
     """Function that will generate the dataset for your model. It can
@@ -23,7 +68,7 @@ def features(**kwargs):
 
     With these files you can train your model!
     """
-    print("==> GENERATING DATASETS FOR TRAINING YOUR MODEL")
+    print("==> GENERATING DATASETS FOR TRAINING YOUR MODEL")	
 
 
 def train(**kwargs):
@@ -85,9 +130,10 @@ def run(**kwargs):
     """
     print("Args: {}".format(kwargs))
     print("Running disaster by felipepenha")
-    features(**kwargs)  # generate dataset for training
-    train(**kwargs)     # training model and save to filesystem
-    metadata(**kwargs)  # performance report
+    clean_text(**kwargs)     # clean text for NLP tasks
+    features(**kwargs)       # generate dataset for training
+    train(**kwargs)          # training model and save to filesystem
+    metadata(**kwargs)       # performance report
 
 
 def cli():

@@ -27,6 +27,7 @@ help:
 	@echo "    release            [Need VERSION] Release a new version of software as tag."
 	@echo "    dist               [Need VERSION] Generate Python packages to workspace/dist."
 	@echo "    clean              Clean workspace/dist software distribution"
+	@echo "    clean_text         Clean text for NLP tasks"
 	@echo "    features           Generates train data for the model and store it to workspace/data/ ."
 	@echo "    train              Train models with the generated data and store the binaries at workspace/model/."
 	@echo "    metadata           Create metadata for the trained model at workspace/."
@@ -46,6 +47,9 @@ guard-%:
 #################
 # User Commands #
 #################
+
+clean_text: build
+	$(DOCKER_RUN) $(IMAGE) clean_text $(PARAMS)
 
 features: build
 	$(DOCKER_RUN) $(IMAGE) features $(PARAMS)

@@ -31,6 +31,13 @@ git clone https://github.com/<@github_username>/disaster.git
 cd disaster
 ```
 
+## Data
+
+```
+cd workspace/data/
+kaggle competitions download -c nlp-getting-started
+
+```
 
 ## Final Report (to be filled once the project is done)
 
