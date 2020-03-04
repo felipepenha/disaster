@@ -454,8 +454,8 @@ def train(**kwargs):
 
     # Create the model with 100 trees
     clf = RandomForestClassifier(
-        max_depth=10,
-        min_samples_split=50,
+        max_depth=12,
+        min_samples_split=25,
         random_state=43
         )
 
@@ -620,22 +620,115 @@ def metadata(**kwargs):
 
     pass
 
-# def predict(input_data):
-#     """Predict: load the trained model and score input_data
 
-#     NOTE
-#     ----
-#     As convention you should use predict/ directory
-#     to do experiments, like predict/input.csv.
-#     """
-#     print("==> PREDICT DATASET {}".format(input_data))
+def predict(**kwargs):
+    """Predict: load the trained model and score input_data
+
+    NOTE
+    ----
+    As convention you should use predict/ directory
+    to do experiments, like predict/input.csv.
+    """
+
+    # Load model
+    filename = (
+        '{0}_model.joblib'
+        .format(timestr)
+        )
+
+    path = (
+        '{0}/{1}'
+        .format(
+            config.models_path,
+            filename
+            )
+        )
+
+    print(
+        "==> USING MODEL FROM FILE\n    {0} :"
+        .format(filename)
+        )
+
+    clf = joblib.load(path)
+
+    # Default based on Global Variable `timestr`
+    filename_fs = (
+        '{0}_feature_selection.txt'
+        .format(timestr)
+        )
+
+    # Load features from file (skip first 2 rows)
+
+    path = (
+        '{0}/{1}'
+        .format(
+            config.models_path,
+            filename_fs
+            )
+        )
+
+    try:
+
+        best_features = np.loadtxt(
+            path,
+            delimiter='\n',
+            skiprows=2,
+            dtype='str'
+            )
+
+    except OSError:
+
+        raise Exception('''
+            Error: try passing a filename as parameter.\n
+            Example: $ make metadata PARAMS=\"--filename_fs=\'...\'\"
+            ''')
+
+    print('\n{0}'.format(best_features))
+
+    y_pred = {}
+    proba = {}
+    x = {}
+
+    # Load data from file
+
+    path = ('{0}/test_features.csv'.format(config.data_path))
+
+    print("==> PREDICT DATASET\n    {0}".format(path))
+
+    x = pd.read_csv(path)
+
+    x.set_index('id', inplace=True)
+
+    x.sort_index(axis=0, inplace=True)
+
+    thr = 0.5
+
+    proba = clf.predict_proba(x[best_features])[:, 1]
+
+    y_pred = (proba >= thr).astype(int)
+
+    output = pd.DataFrame(
+        {
+            'id': x.reset_index()['id'].values,
+            'target': y_pred
+        }
+    )
+
+    path = (
+        '{0}/{1}_test_predict.json'
+        .format(config.predict_path, timestr)
+        )
+
+    output.to_csv(path, index=False)
+
+    pass
 
 
 # Run all pipeline sequentially
 def run(**kwargs):
     """Run the complete pipeline of the model.
     """
-    print("Args: {}".format(kwargs))
+    print("Args: {0}".format(kwargs))
     print("Running disaster by felipepenha")
     split(**kwargs)       # generate train/valid/test sets
     process(**kwargs)     # clean text for NLP tasks
@@ -643,6 +736,7 @@ def run(**kwargs):
     select(**kwargs)      # feature selection based on training data only
     train(**kwargs)       # training model and save to filesystem
     metadata(**kwargs)    # performance report
+    predict(**kwargs)     # predictions on new data
 
 
 def cli():
