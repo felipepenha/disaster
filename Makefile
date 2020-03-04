@@ -27,8 +27,10 @@ help:
 	@echo "    release            [Need VERSION] Release a new version of software as tag."
 	@echo "    dist               [Need VERSION] Generate Python packages to workspace/dist."
 	@echo "    clean              Clean workspace/dist software distribution"
-	@echo "    clean_text         Clean text for NLP tasks"
+	@echo "    split	    	  Generate train/valid/test sets"
+	@echo "    process	    	  Pre-process text for NLP tasks"
 	@echo "    features           Generates train data for the model and store it to workspace/data/ ."
+	@echo "    select             Feature Selection based on training data only"
 	@echo "    train              Train models with the generated data and store the binaries at workspace/model/."
 	@echo "    metadata           Create metadata for the trained model at workspace/."
 	@echo "    run                Create train data, train model and store trained workspace and metadata."
@@ -48,11 +50,17 @@ guard-%:
 # User Commands #
 #################
 
-clean_text: build
-	$(DOCKER_RUN) $(IMAGE) clean_text $(PARAMS)
+split: build
+	$(DOCKER_RUN) $(IMAGE) split $(PARAMS)
+
+process: build
+	$(DOCKER_RUN) $(IMAGE) process $(PARAMS)
 
 features: build
 	$(DOCKER_RUN) $(IMAGE) features $(PARAMS)
+
+select: build
+	$(DOCKER_RUN) $(IMAGE) select $(PARAMS)
 
 train: build
 	$(DOCKER_RUN) $(IMAGE) train $(PARAMS)
