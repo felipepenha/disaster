@@ -10,12 +10,6 @@ RUN python -V
 ARG APP_DIR=/app
 WORKDIR ${APP_DIR}
 
-# Install 'h2o' dependencies
-RUN pip install --upgrade requests
-RUN pip install --upgrade tabulate
-RUN pip install --upgrade colorama>=0.3.8
-RUN pip install --upgrade future
-
 # Install requirements
 ADD requirements.txt .
 RUN pip --disable-pip-version-check install -r requirements.txt
@@ -25,5 +19,6 @@ RUN pip --disable-pip-version-check install -e .
 RUN chmod -R a+w ${APP_DIR}
 ENTRYPOINT ["disaster"]
 
+# Install 'nltk' and download 'punkt'
 RUN pip install nltk==3.4.5
 RUN python -m nltk.downloader -d /nltk_data punkt

@@ -1,7 +1,8 @@
 ## Essential packages: software dependency
 fire>=0.1.3
 
-## Data analysis
+## SciPy
+numpy
 pandas
 
 ## Dev packages: development enviroment
@@ -22,7 +23,10 @@ bandit #dev
 # matplotlib
 # seaborn
 
-# NLP
+# Vader requirements
+requests
+
+## NLP
 vaderSentiment==3.2.1
 
 # nltk==3.4.5 
@@ -30,6 +34,8 @@ vaderSentiment==3.2.1
 #	RUN pip install nltk==3.4.5
 #	RUN python -m nltk.downloader -d /nltk_data punkt
 
-# ML
-h2o==3.28.0.3
+## ML
 scikit-learn==0.22.2
+
+## Model persistence
+joblib
