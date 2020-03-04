@@ -11,7 +11,7 @@ pandas
 pytest #dev
 pytest-mypy #dev
 pytest-cov #dev
-flake8==3.7.9 #dev
+flake8 #dev
 bandit #dev
 
 # Cloud Storage
