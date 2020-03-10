@@ -110,3 +110,6 @@ venv.bak/
 
 # project workspace
 workspace/download
+
+# Model persistence
+.joblib

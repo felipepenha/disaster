@@ -14,6 +14,8 @@ import json
 from sklearn.linear_model import ElasticNet
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
+
+# Model persistence
 import joblib
 
 # NLP packages
@@ -46,12 +48,12 @@ def split(**kwargs):
     """
     Function that will generate the train/valid/test sets
 
-    USAGE
-    ----
+    Examples
+    --------
     $ make slit
 
-    NOTE
-    ----
+    Notes
+    -----
     config.data_path: workspace/data
 
     You should use workspace/data to put data to working on.  Let's say
@@ -108,8 +110,8 @@ def tokenizer(text):
     """
     Util for cleaning and tokenazing text for NLP tasks
 
-    REFERENCES
-    ----
+    References
+    ----------
     https://machinelearningmastery.com/clean-text-machine-learning-python/
     """
 
@@ -133,8 +135,8 @@ def process(**kwargs):
     """
     Pre-process tabular text for NLP tasks
 
-    USAGE
-    ----
+    Examples
+    --------
     $ make process
 
     """
@@ -177,12 +179,12 @@ def features(**kwargs):
     be the target population, training or validation dataset. You can
     do in this step as well do the task of Feature Engineering.
 
-    USAGE
-    ----
+    Examples
+    --------
     $ make features
 
-    NOTE
-    ----
+    Notes
+    -----
     config.data_path: workspace/data
 
     You should use workspace/data to put data to working on.  Let's say
@@ -360,12 +362,22 @@ def select(**kwargs):
     """
     Feature selection based on training data only
 
-    USAGE
-    ----
-    $ make select PARAMS="--alpha=... --l1_ratio=..."
+    Parameters
+    ----------
+    alpha: float
+            ElasticNet hyperparameter
+            - Constant that multiplies the penalty terms
 
-    NOTE
-    ----
+    l1_ratio: float
+                ElasticNet hyperparameter
+                - Mixing parameter
+
+    Examples
+    --------
+    $ make select PARAMS="--alpha=0.5 --l1_ratio=0.5"
+
+    Notes
+    -----
     config.models_path: workspace/models
     config.data_path: workspace/data
 
@@ -450,14 +462,46 @@ def train(**kwargs):
     Function that will run your model, be it a NN, Composite indicator
     or a Decision tree, you name it.
 
-    USAGE
-    ----
-    $ make train PARAMS="--filename_fs='...'"
+    Parameters
+    ----------
+    filename_fs: str
+                Filename where to read list of features
 
-    'filename_fs': where best features have been stored
+    n_estimators: int
+                    RandomForestClassifier hyperparameter
+                    - The number of trees in the forest
 
-    NOTE
-    ----
+    max_depth: int
+                RandomForestClassifier hyperparameter
+                - The maximum depth of the tree
+
+    min_samples_split: int
+                        RandomForestClassifier hyperparameter
+                        - The minimum number of samples required to
+                            split an internal node
+
+    n_jobs: int
+            The number of jobs to run in parallel
+            - n_jobs=-1 uses all processor available
+                n_jobs=-2 uses all processors but 1
+
+
+    random_state: int
+                    Controls both the randomness of the
+                    bootstrapping of the samples used when
+                    building trees (if bootstrap=True)
+                    and the sampling of the features to
+                    consider when looking for the best split
+                    at each node (if max_features < n_features)
+
+    Examples
+    --------
+    $ make train PARAMS="--filename_fs='20200310151753_feature_selection.txt'"
+
+    $ make train PARAMS="--n_jobs=2"
+
+    Notes
+    -----
     config.models_path: workspace/models
     config.data_path: workspace/data
 
@@ -466,6 +510,33 @@ def train(**kwargs):
     binary into workspace/models directory.
     """
     print("==> TRAINING THE MODEL!")
+
+    # Defaults
+    n_estimators = 10000
+    max_depth = 8
+    min_samples_split = 250
+    n_jobs = -2
+    random_state = 43
+
+    # If 'n_estimators' passed through PARAMS
+    if 'n_estimators' in kwargs.keys():
+        n_estimators = kwargs['n_estimators']
+
+    # If 'max_depth' passed through PARAMS
+    if 'max_depth' in kwargs.keys():
+        max_depth = kwargs['max_depth']
+
+    # If 'min_samples_split' passed through PARAMS
+    if 'min_samples_split' in kwargs.keys():
+        min_samples_split = kwargs['min_samples_split']
+
+    # If 'n_jobs' passed through PARAMS
+    if 'n_jobs' in kwargs.keys():
+        n_jobs = kwargs['n_jobs']
+
+    # If 'random_state' passed through PARAMS
+    if 'random_state' in kwargs.keys():
+        random_state = kwargs['random_state']
 
     # Default based on Global Variable `timestr`
     filename_fs = (
@@ -533,13 +604,12 @@ def train(**kwargs):
     df_feat.sort_index(axis=0, inplace=True)
 
     # Create the model
-    # Use all processors available except one (n_jobs=-2)
     clf = RandomForestClassifier(
-        n_estimators=10000,
-        max_depth=8,
-        min_samples_split=250,
-        n_jobs=-2,
-        random_state=43
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_split=min_samples_split,
+        n_jobs=n_jobs,
+        random_state=random_state
         )
 
     # Fit model on training data
@@ -573,8 +643,8 @@ def train(**kwargs):
 def metadata(**kwargs):
     """Generate metadata for model governance using testing!
 
-    NOTE
-    ----
+    Notes
+    -----
     workspace_path: config.workspace_path
 
     In this section you should save your performance model,
@@ -593,8 +663,8 @@ def metadata(**kwargs):
        'source': 'https://archive.ics.uci.edu/ml/datasets/iris'
     }
 
-    REFERENCES
-    ----
+    References
+    ----------
     https://scikit-learn.org/stable/modules/generated/sklearn.metrics.classification_report.html
     """
     print("==> TESTING MODEL PERFORMANCE AND GENERATING METADATA")
@@ -705,8 +775,8 @@ def metadata(**kwargs):
 def predict(**kwargs):
     """Predict: load the trained model and score input_data
 
-    NOTE
-    ----
+    Notes
+    -----
     As convention you should use predict/ directory
     to do experiments, like predict/input.csv.
     """
