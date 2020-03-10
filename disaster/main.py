@@ -21,6 +21,10 @@ import re
 from nltk.tokenize import word_tokenize
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+# MISC
+import requests
+import zipfile
+
 # Global variables
 timestr = time.strftime('%Y%m%d%H%M%S')
 
@@ -62,7 +66,6 @@ def split(**kwargs):
 
     With these files you can train your model!
     """
-
     print("==> GENERATING TRAIN / VALID DATASETS")
 
     # Load data from file
@@ -196,6 +199,45 @@ def features(**kwargs):
     """
     print("==> FEATURE ENGINEERING")
 
+    try:
+
+        print("    ==> LOOKING FOR GLOVE-6B")
+
+        path = '{0}/glove6B/glove.6B.300d.txt'.format(config.download_path)
+
+        open(path, 'r')
+
+    except FileNotFoundError:
+
+        # DOWNLOAD: glove6B
+        print("    ==> DOWNLOADING GLOVE-6B")
+
+        url = 'http://nlp.stanford.edu/data/glove.6B.zip'
+        r = requests.get(url, allow_redirects=True)
+        path = '{0}/glove6B.zip'.format(config.download_path)
+        open(path, 'wb').write(r.content)
+
+        path = '{0}/glove6B/'.format(config.download_path)
+
+        zip_ref = zipfile.ZipFile(path, 'r')
+        zip_ref.extractall(path)
+        zip_ref.close()
+
+    print("    ==> LOADING GLOVE-6B")
+
+    path = '{0}/glove6B/glove.6B.300d.txt'.format(config.download_path)
+
+    f = open(path, 'r')
+
+    glove = {}
+
+    for line in f:
+
+        splitLine = line.split()
+        word = splitLine[0]
+        embedding = np.array([float(val) for val in splitLine[1:]])
+        glove[word] = embedding
+
     hot = {}
 
     for s in ['train', 'valid', 'test']:
@@ -206,7 +248,7 @@ def features(**kwargs):
 
         df = pd.read_csv(path)
 
-        # FEATURE: SENTIMENT SCORE
+        # -- FEATURE: SENTIMENT SCORE --
 
         analyzer = SentimentIntensityAnalyzer()
 
@@ -217,7 +259,7 @@ def features(**kwargs):
                 axis=1
                 )
 
-        # FEATURES: WORDS FROM REGEX PATTERNS
+        # -- FEATURES: WORDS FROM REGEX PATTERNS --
 
         for r in ['hash', 'at', 'url']:
 
@@ -247,15 +289,53 @@ def features(**kwargs):
             .set_index('id')
             )
 
+        # -- FEATURES: WORD EMBEDDINGS AVERAGES --
+
+        df['embeddings_array'] = df.apply(
+                lambda row: (
+                    np.average(
+                        [
+                            glove[s] for s in
+                            literal_eval(row['tokens'])
+                            if s in glove.keys()
+                        ],
+                        axis=0
+                    )
+                ),
+                axis=1
+            )
+
+        # Drop nan
+        df.dropna(axis=0, subset=['embeddings_array'], inplace=True)
+
+        cols = ['feature_glove_{0}'.format(str(s)) for s in range(0, 300)]
+
         df.set_index('id', inplace=True)
 
-        # Get one hot encoding of columns 'array'
+        df[cols] = pd.DataFrame(
+            df['embeddings_array'].values.tolist(),
+            index=df.index
+            )
+
+        # (1) Get one hot encoding of columns 'array'
+        # (2) Join 'feature_sent_score'
+        # (3) Join 'feature_glove_...'
+        # (4) Fill nan's
+        # (5) Reset index
 
         hot[s] = (
             pd.get_dummies(df_exploded['array'])
             .groupby('id')
             .sum()
-            .join(df['feature_sent_score'])
+            .join(
+                df['feature_sent_score'],
+                how='left'
+                )
+            .join(
+                df[cols],
+                how='left'
+                )
+            .fillna(0)
             .reset_index()
             )
 
@@ -297,7 +377,7 @@ def select(**kwargs):
 
     # Defaults
     alpha = 0.01
-    l1_ratio = 0.02
+    l1_ratio = 0.05
 
     # If 'alpha' passed through PARAMS
     if 'alpha' in kwargs.keys():
@@ -334,7 +414,7 @@ def select(**kwargs):
     # Features with non-zero ElasticNet coefficients
     cols = np.array(df_feat.columns)
 
-    best_features = cols[np.abs(coefs) > 1.e-3]
+    best_features = cols[np.abs(coefs) > 1.e-12]
 
     # Document parameter values
 
@@ -356,7 +436,7 @@ def select(**kwargs):
     np.savetxt(path, best_features, delimiter=',', fmt='%s')
 
     print(
-        "==> BEST FEATURES WRITTEN TO FILE\n    {0}"
+        "    ==> BEST FEATURES WRITTEN TO FILE\n        {0}"
         .format(path)
         )
 
@@ -400,7 +480,7 @@ def train(**kwargs):
         )
 
     print(
-        "==> USING FEATURES LIST FROM FILE\n    {0} :"
+        "    ==> USING FEATURES LIST FROM FILE\n    {0} :"
         .format(filename_fs)
         )
 
@@ -452,14 +532,17 @@ def train(**kwargs):
 
     df_feat.sort_index(axis=0, inplace=True)
 
-    # Create the model with 100 trees
+    # Create the model
+    # Use all processors available except one (n_jobs=-2)
     clf = RandomForestClassifier(
-        max_depth=12,
-        min_samples_split=25,
+        n_estimators=10000,
+        max_depth=8,
+        min_samples_split=250,
+        n_jobs=-2,
         random_state=43
         )
 
-    # Fit on training data
+    # Fit model on training data
     clf.fit(df_feat[best_features], df_target['target'])
 
     # Save model
@@ -480,7 +563,7 @@ def train(**kwargs):
     joblib.dump(clf, path)
 
     print(
-        "==> MODEL PICKLED AT\n    {0} :"
+        "    ==> MODEL PICKLED AT\n    {0} :"
         .format(path)
         )
 
@@ -531,7 +614,7 @@ def metadata(**kwargs):
         )
 
     print(
-        "==> USING MODEL FROM FILE\n    {0} :"
+        "    ==> USING MODEL FROM FILE\n    {0} :"
         .format(filename)
         )
 
@@ -569,8 +652,6 @@ def metadata(**kwargs):
             Example: $ make metadata PARAMS=\"--filename_fs=\'...\'\"
             ''')
 
-    print('\n{0}'.format(best_features))
-
     y_true = {}
     y_pred = {}
     proba = {}
@@ -578,7 +659,7 @@ def metadata(**kwargs):
 
     for s in ['train', 'valid']:
 
-        print('\n==> {0}'.format(s.upper()))
+        print('\n    ==> {0}'.format(s.upper()))
 
         # Load data from file
 
@@ -629,6 +710,7 @@ def predict(**kwargs):
     As convention you should use predict/ directory
     to do experiments, like predict/input.csv.
     """
+    print("==> MAKING PREDICTIONS")
 
     # Load model
     filename = (
@@ -693,7 +775,7 @@ def predict(**kwargs):
 
     path = ('{0}/test_features.csv'.format(config.data_path))
 
-    print("==> PREDICT DATASET\n    {0}".format(path))
+    print("    ==> PREDICT DATASET\n    {0}".format(path))
 
     x = pd.read_csv(path)
 

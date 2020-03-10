@@ -109,4 +109,4 @@ venv.bak/
 .mypy_cache/
 
 # project workspace
-workspace/
+workspace/download
