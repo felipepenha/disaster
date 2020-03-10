@@ -89,8 +89,12 @@ def split(**kwargs):
     path = ('{0}/train.csv'.format(config.data_path))
     train.to_csv(path, index=False)
 
+    print('    ==> TRAIN: {0}'.format(len(train)))
+
     path = ('{0}/valid.csv'.format(config.data_path))
     valid.to_csv(path, index=False)
+
+    print('    ==> VALID: {0}'.format(len(valid)))
 
     # Load data from file
     path = (
@@ -102,6 +106,8 @@ def split(**kwargs):
 
     path = ('{0}/test.csv'.format(config.data_path))
     test.to_csv(path, index=False)
+
+    print('    ==> TEST: {0}'.format(len(valid)))
 
     pass
 
@@ -457,6 +463,64 @@ def select(**kwargs):
     pass
 
 
+def recover_fs(kwargs):
+    """
+    Recover `best_features` from `select` module
+
+    Parameters
+    ----------
+    filename_fs: str
+                Filename where to read list of features
+    """
+
+    # Default based on Global Variable `timestr`
+    filename_fs = (
+        '{0}_feature_selection.txt'
+        .format(timestr)
+        )
+
+    # If 'filename_fs' passed through PARAMS
+    if 'filename_fs' in kwargs.keys():
+        filename_fs = (
+            kwargs['filename_fs']
+        )
+
+    print(
+        "    ==> USING FEATURES LIST FROM FILE\n    {0} :"
+        .format(filename_fs)
+        )
+
+    # Load features from file (skip first 2 rows)
+
+    path = (
+        '{0}/{1}'
+        .format(
+            config.models_path,
+            filename_fs
+            )
+        )
+
+    try:
+
+        best_features = np.loadtxt(
+            path,
+            delimiter='\n',
+            skiprows=2,
+            dtype='str'
+            )
+
+    except OSError:
+
+        raise Exception('''
+            Error: try passing a filename as parameter.\n
+            Example: $ make train PARAMS=\"--filename_fs=\'...\'\"
+            ''')
+
+    print('\n{0}'.format(best_features))
+
+    return best_features
+
+
 def train(**kwargs):
     """
     Function that will run your model, be it a NN, Composite indicator
@@ -464,8 +528,6 @@ def train(**kwargs):
 
     Parameters
     ----------
-    filename_fs: str
-                Filename where to read list of features
 
     n_estimators: int
                     RandomForestClassifier hyperparameter
@@ -538,50 +600,8 @@ def train(**kwargs):
     if 'random_state' in kwargs.keys():
         random_state = kwargs['random_state']
 
-    # Default based on Global Variable `timestr`
-    filename_fs = (
-        '{0}_feature_selection.txt'
-        .format(timestr)
-        )
-
-    # If 'filename_fs' passed through PARAMS
-    if 'filename_fs' in kwargs.keys():
-        filename_fs = (
-            kwargs['filename_fs']
-        )
-
-    print(
-        "    ==> USING FEATURES LIST FROM FILE\n    {0} :"
-        .format(filename_fs)
-        )
-
-    # Load features from file (skip first 2 rows)
-
-    path = (
-        '{0}/{1}'
-        .format(
-            config.models_path,
-            filename_fs
-            )
-        )
-
-    try:
-
-        best_features = np.loadtxt(
-            path,
-            delimiter='\n',
-            skiprows=2,
-            dtype='str'
-            )
-
-    except OSError:
-
-        raise Exception('''
-            Error: try passing a filename as parameter.\n
-            Example: $ make train PARAMS=\"--filename_fs=\'...\'\"
-            ''')
-
-    print('\n{0}'.format(best_features))
+    # Recover `best_features`
+    best_features = recover_fs(kwargs)
 
     # Load data from file
 
@@ -690,37 +710,8 @@ def metadata(**kwargs):
 
     clf = joblib.load(path)
 
-    # Default based on Global Variable `timestr`
-    filename_fs = (
-        '{0}_feature_selection.txt'
-        .format(timestr)
-        )
-
-    # Load features from file (skip first 2 rows)
-
-    path = (
-        '{0}/{1}'
-        .format(
-            config.models_path,
-            filename_fs
-            )
-        )
-
-    try:
-
-        best_features = np.loadtxt(
-            path,
-            delimiter='\n',
-            skiprows=2,
-            dtype='str'
-            )
-
-    except OSError:
-
-        raise Exception('''
-            Error: try passing a filename as parameter.\n
-            Example: $ make metadata PARAMS=\"--filename_fs=\'...\'\"
-            ''')
+    # Recover `best_features`
+    best_features = recover_fs(kwargs)
 
     y_true = {}
     y_pred = {}
@@ -803,39 +794,8 @@ def predict(**kwargs):
 
     clf = joblib.load(path)
 
-    # Default based on Global Variable `timestr`
-    filename_fs = (
-        '{0}_feature_selection.txt'
-        .format(timestr)
-        )
-
-    # Load features from file (skip first 2 rows)
-
-    path = (
-        '{0}/{1}'
-        .format(
-            config.models_path,
-            filename_fs
-            )
-        )
-
-    try:
-
-        best_features = np.loadtxt(
-            path,
-            delimiter='\n',
-            skiprows=2,
-            dtype='str'
-            )
-
-    except OSError:
-
-        raise Exception('''
-            Error: try passing a filename as parameter.\n
-            Example: $ make metadata PARAMS=\"--filename_fs=\'...\'\"
-            ''')
-
-    print('\n{0}'.format(best_features))
+    # Recover `best_features`
+    best_features = recover_fs(kwargs)
 
     y_pred = {}
     proba = {}
@@ -876,9 +836,9 @@ def predict(**kwargs):
     pass
 
 
-# Run all pipeline sequentially
 def run(**kwargs):
-    """Run the complete pipeline of the model.
+    """
+    Run the full pipeline of the model.
     """
     print("Args: {0}".format(kwargs))
     print("Running disaster by felipepenha")
@@ -891,8 +851,25 @@ def run(**kwargs):
     predict(**kwargs)     # predictions on new data
 
 
+def skip(**kwargs):
+    """
+    Run pipeline by skipping split/process/features/select
+
+    Notes
+    -----
+    You must provide the desired value for the kwarg `filename_fs`
+    """
+    print("Args: {0}".format(kwargs))
+    print("Running disaster by felipepenha")
+    train(**kwargs)       # training model and save to filesystem
+    metadata(**kwargs)    # performance report
+    predict(**kwargs)     # predictions on new data
+
+
 def cli():
-    """Caller of the fire cli"""
+    """
+    Caller of the fire cli
+    """
     return fire.Fire()
 
 

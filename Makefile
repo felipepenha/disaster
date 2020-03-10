@@ -33,8 +33,9 @@ help:
 	@echo "    select             Feature Selection based on training data only"
 	@echo "    train              Train models with the generated data and store the binaries at workspace/model/."
 	@echo "    metadata           Create metadata for the trained model at workspace/."
-	@echo "    run                Create train data, train model and store trained workspace and metadata."
 	@echo "    predict            [Need INPUT] Use trained model to predict data specified on the INPUT variable."
+	@echo "    run                Run the full pipeline."
+	@echo "    skip               Run pipeline by skipping split/process/features/select."
 	@echo "    docs               Generate html documentation based on doc files (md) and source code."
 	@echo
 	@echo "VARS"
@@ -68,12 +69,15 @@ train: build
 metadata: build
 	$(DOCKER_RUN) $(IMAGE) metadata $(PARAMS)
 
-run: build
-	$(DOCKER_RUN) $(IMAGE) run $(PARAMS)
-
 predict: guard-INPUT mkdir-predict
 	$(DOCKER_RUN) -v $(PWD)/predict:$(DOCKER_APP)/predict \
 	$(IMAGE) predict --input-data $(INPUT) $(PARAMS)
+
+run: build
+	$(DOCKER_RUN) $(IMAGE) run $(PARAMS)
+
+skip: build
+	$(DOCKER_RUN) $(IMAGE) skip $(PARAMS)
 
 jupyter:
 	@printf $(STATUS_PREFIX); echo "PREPARING JUPYTERLAB ENVIRONMENT"
