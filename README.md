@@ -204,5 +204,18 @@ make skip PARAMS="--filename_fs='[timestr]_feature_selection.txt'"
 At this point, you can change the hyperparameters with kwargs passed to `PARAMS` for further tunning the model beyond the defaults.
 
 
+To create automated documentation:
 
+```
+make docs
+```
 
+Finally, to release a new version:
+
+```
+git add .
+git commit -m "..."
+make release VERSION=X.Y.Z
+```
+
+Check [Travis CI](https://travis-ci.org/) to monitor Continuous Integration.
