@@ -17,7 +17,7 @@ The actual time of the disaster event is irrelevant, e.g. tweets about Hiroshima
 The data was originally obtained from the Kaggle competition [Real or Not? NLP with Disaster Tweets](https://www.kaggle.com/c/nlp-getting-started/data).
 
 
-The original data is to be found in the directory 
+The original data should be found in the directory 
 
 ```
 cd workspace/data/nlp-getting-started/
@@ -137,7 +137,7 @@ make run PARAMS="--kwarg=[value of kwarg]"
 ```
 
 
-The followgin `kwargs` are available:
+The following `kwargs` are available:
 
 ```
     Parameters
