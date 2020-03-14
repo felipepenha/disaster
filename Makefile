@@ -124,7 +124,7 @@ shell: build
 release: guard-VERSION check
 	@printf $(STATUS_PREFIX); echo "CREATE NEW GIT TAG" $(VERSION)
 	git tag -a $(VERSION) -m "Auto-generated release $(VERSION)"
-	git push origin $(VERSION)
+	git push origin master tag $(VERSION)
 
 # Distribute software in multiple formats
 dist: guard-VERSION build clean
