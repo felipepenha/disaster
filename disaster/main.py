@@ -899,23 +899,23 @@ def metadata(**kwargs):
         # Performance extracted from the "ROC curve"
         fpr, tpr, thr = (
             metrics.roc_curve(
-            y_true=y_true.values,
-            y_score=proba,
-            pos_label=1,
-            drop_intermediate=False
+                y_true=y_true.values,
+                y_score=proba,
+                pos_label=1,
+                drop_intermediate=False
             )
         )
 
         meta['AUC'] = metrics.auc(fpr, tpr)
-        
+
         diff = np.abs(tpr - fpr)
-        
+
         # Kolmogorov–Smirnov
         meta['KS'] = np.max(diff)
-        
+
         # Numpy index of the maximum separation between TPR and FPR
         ks_idx = np.argmax(diff)
-        
+
         # Update optimum threshold based on KS criterium
         # -- Last updated will be 'valid', to be used later
         meta['optimal_threshold'] = thr[ks_idx]
