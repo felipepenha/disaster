@@ -1,6 +1,8 @@
+# --- IMPORT PYTHON PACKAGES ---
+
 # Template's Basic packages
 import fire
-from disaster import config  # noqa
+from disaster import config
 
 # Basic packages
 import string
@@ -13,7 +15,8 @@ import json
 # ML packages
 from sklearn.linear_model import ElasticNet
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn import metrics
 
 # Model persistence
 import joblib
@@ -23,14 +26,15 @@ import re
 from nltk.tokenize import word_tokenize
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# MISC
-import requests
-import zipfile
+# Custom modules
+from disaster.bert_embedding import BertEmbedding
+from disaster.glove_embedding import GloveEmbedding
 
-# Global variables
-timestr = time.strftime('%Y%m%d%H%M%S')
+# -- INITIALIZE NP.RANDOM.SEED --
 
-# Compile regex (Global)
+np.random.seed(43)
+
+# -- PRE-COMPILE REGEX (GLOBAL) --
 
 regex = {}
 
@@ -42,6 +46,15 @@ regex['at'] = re.compile(r'\@(\w+)')
 
 # URLs beginning with 'http://' or 'https://'
 regex['url'] = re.compile(r'http.*\:\/\/(\w+\.\w+)')
+
+# --- INITIALIZE GLOBAL `meta` DICT --
+
+meta = {}
+
+# Timestamp for files
+meta['timestr'] = time.strftime('%Y%m%d%H%M%S')
+
+# --- DEFINITIONS FOR THE PIPELINE ---
 
 
 def split(**kwargs):
@@ -100,7 +113,7 @@ def split(**kwargs):
     path = (
         '{0}/nlp-getting-started/test.csv'
         .format(config.data_path)
-        )
+    )
 
     test = pd.read_csv(path)
 
@@ -132,7 +145,15 @@ def tokenizer(text):
     stripped = [w.translate(table) for w in tokens]
 
     # remove remaining tokens that are not alphabetic
-    words = [word for word in stripped if word.isalpha()]
+    # remove 'http' and 'https'
+    blacklist = ['http', 'https']
+    words = [
+        word for word in stripped
+        if (
+            word.isalpha()
+            & (word not in blacklist)
+        )
+    ]
 
     return words
 
@@ -160,7 +181,7 @@ def process(**kwargs):
         df['tokens'] = df.apply(
             lambda row: tokenizer(row['text']),
             axis=1
-            )
+        )
 
         # Extract words based on regex patterns
         # (pre-compiled as global variables)
@@ -169,7 +190,7 @@ def process(**kwargs):
             df[r] = df.apply(
                 lambda row: re.findall(regex[r], row['text'].lower()),
                 axis=1
-                )
+            )
 
         # Write data to file
         path = path.replace('.csv', '_processed.csv')
@@ -181,13 +202,18 @@ def process(**kwargs):
 
 def features(**kwargs):
     """
-    Function that will generate the dataset for your model. It can
-    be the target population, training or validation dataset. You can
-    do in this step as well do the task of Feature Engineering.
+    Feature Engineering
+
+    Parameters
+    ----------
+    opt_features: List[str]
+                    List of type of features to include
+                    Possible values:
+                    'regex', 'vaderSentiment', 'glove', 'bert'
 
     Examples
     --------
-    $ make features
+    $ make features PARAMS="--opt_features=[regex,bert]"
 
     Notes
     -----
@@ -207,44 +233,12 @@ def features(**kwargs):
     """
     print("==> FEATURE ENGINEERING")
 
-    try:
+    # Defaults
+    meta['opt_features'] = ['regex', 'vaderSentiment', 'glove']
 
-        print("    ==> LOOKING FOR GLOVE-6B")
-
-        path = '{0}/glove6B/glove.6B.300d.txt'.format(config.download_path)
-
-        open(path, 'r')
-
-    except FileNotFoundError:
-
-        # DOWNLOAD: glove6B
-        print("    ==> DOWNLOADING GLOVE-6B")
-
-        url = 'http://nlp.stanford.edu/data/glove.6B.zip'
-        r = requests.get(url, allow_redirects=True)
-        path = '{0}/glove6B.zip'.format(config.download_path)
-        open(path, 'wb').write(r.content)
-
-        path = '{0}/glove6B/'.format(config.download_path)
-
-        zip_ref = zipfile.ZipFile(path, 'r')
-        zip_ref.extractall(path)
-        zip_ref.close()
-
-    print("    ==> LOADING GLOVE-6B")
-
-    path = '{0}/glove6B/glove.6B.300d.txt'.format(config.download_path)
-
-    f = open(path, 'r')
-
-    glove = {}
-
-    for line in f:
-
-        splitLine = line.split()
-        word = splitLine[0]
-        embedding = np.array([float(val) for val in splitLine[1:]])
-        glove[word] = embedding
+    # If 'opt_features' passed through PARAMS
+    if 'opt_features' in kwargs.keys():
+        meta['opt_features'] = kwargs['opt_features']
 
     hot = {}
 
@@ -256,96 +250,185 @@ def features(**kwargs):
 
         df = pd.read_csv(path)
 
-        # -- FEATURE: SENTIMENT SCORE --
-
-        analyzer = SentimentIntensityAnalyzer()
-
-        df['feature_sent_score'] = df.apply(
-                lambda row: (
-                    analyzer.polarity_scores(row['text'])['compound']
-                ),
-                axis=1
-                )
+        # Create index on 'id'
+        df.set_index('id', inplace=True)
 
         # -- FEATURES: WORDS FROM REGEX PATTERNS --
 
-        for r in ['hash', 'at', 'url']:
+        if 'regex' in meta['opt_features']:
 
-            # Replace '[]' by '["none_hash"]' or '["none_at"]'
-            # to keep track of null categories
-            df[r] = df.apply(
-                lambda row: row[r].replace('[]', '["none_{0}"]'.format(r)),
-                axis=1
+            for r in ['hash', 'at', 'url']:
+
+                # Replace '[]' by '["none_hash"]' or '["none_at"]'
+                # to keep track of null categories
+                df[r] = df.apply(
+                    lambda row: (
+                        row[r]
+                        .replace(
+                            '[]',
+                            '["none_{0}"]'
+                            .format(r)
+                        )
+                    ),
+                    axis=1
                 )
 
-            # 'literal_evar' transforms strings into actual arrays
-            df[r] = df.apply(
-                lambda row: literal_eval(row[r]),
-                axis=1
+                # 'literal_evar' transforms strings into actual arrays
+                df[r] = df.apply(
+                    lambda row: literal_eval(row[r]),
+                    axis=1
                 )
 
-        # Combine arrays in a single array
-        df['array'] = df.apply(
-            lambda row: list(set(row['hash'] + row['at'] + row['url'])),
-            axis=1
-            )
-
-        # Explode array
-        df_exploded = (
-            df.explode('array')[['id', 'array']]
-            .drop_duplicates()
-            .set_index('id')
-            )
-
-        # -- FEATURES: WORD EMBEDDINGS AVERAGES --
-
-        df['embeddings_array'] = df.apply(
+            # Combine arrays in a single array
+            df['array'] = df.apply(
                 lambda row: (
-                    np.average(
-                        [
-                            glove[s] for s in
-                            literal_eval(row['tokens'])
-                            if s in glove.keys()
-                        ],
-                        axis=0
+                    list(
+                        set(
+                            row['hash'] +
+                            row['at'] +
+                            row['url']
+                        )
                     )
                 ),
                 axis=1
             )
 
-        # Drop nan
-        df.dropna(axis=0, subset=['embeddings_array'], inplace=True)
-
-        cols = ['feature_glove_{0}'.format(str(s)) for s in range(0, 300)]
-
-        df.set_index('id', inplace=True)
-
-        df[cols] = pd.DataFrame(
-            df['embeddings_array'].values.tolist(),
-            index=df.index
+            # Explode array
+            df_exploded = (
+                df
+                .reset_index()
+                .explode('array')[['id', 'array']]
+                .drop_duplicates()
+                .set_index('id')
             )
 
-        # (1) Get one hot encoding of columns 'array'
-        # (2) Join 'feature_sent_score'
-        # (3) Join 'feature_glove_...'
-        # (4) Fill nan's
-        # (5) Reset index
+            # (1) Get one hot encoding of columns 'array'
+            hot[s] = (
+                pd.get_dummies(df_exploded['array'])
+                .groupby('id')
+                .sum()
+            )
 
+        else:
+
+            hot[s] = (
+                df
+                .reset_index()['id']
+                .set_index('id')
+                .copy(deep=True)
+            )
+
+        # -- FEATURE: SENTIMENT SCORE --
+
+        if 'vaderSentiment' in meta['opt_features']:
+
+            analyzer = SentimentIntensityAnalyzer()
+
+            df['feature_vader_sentiment'] = df.apply(
+                lambda row: (
+                    analyzer.polarity_scores(row['text'])['compound']
+                ),
+                axis=1
+            )
+
+            # (2) Join 'feature_vader_sentiment'
+            hot[s] = (
+                hot[s]
+                .join(
+                    df['feature_vader_sentiment'],
+                    how='left'
+                )
+            )
+
+        # -- FEATURES: GLOVE WORD EMBEDDINGS AVERAGES --
+
+        if 'glove' in meta['opt_features']:
+
+            df['glove_array'] = df.apply(
+                lambda row: (
+                    GloveEmbedding()
+                    .embedding(
+                        literal_eval(
+                            row['tokens']
+                        )
+                    )
+                ),
+                axis=1
+            )
+
+            # Drop nan
+            df.dropna(axis=0, subset=['glove_array'], inplace=True)
+
+            cols_glove = [
+                'feature_glove_{0}'.format(str(s))
+                for s in range(0, 300)
+            ]
+
+            df[cols_glove] = pd.DataFrame(
+                df['glove_array'].values.tolist(),
+                index=df.index
+            )
+
+            # (3) Join 'feature_glove_...'
+            hot[s] = (
+                hot[s]
+                .join(
+                    df[cols_glove],
+                    how='left'
+                )
+            )
+
+        # -- FEATURES: BERT SENTENCE EMBEDDINGS AVERAGES --
+
+        if 'bert' in meta['opt_features']:
+
+            df['sentences'] = (
+                df['tokens']
+                .apply(lambda row: ' '.join(literal_eval(row)))
+                .values
+            )
+
+            encoding = np.array(
+                BertEmbedding(root=config.download_path)
+                .embedding(df['sentences'].values)
+            )
+
+            features = [
+                np.average(list(k[1:]), axis=1).flatten()
+                for k in encoding
+            ]
+
+            df['bert_array'] = pd.Series(features)
+
+            # Drop nan
+            df.dropna(axis=0, subset=['bert_array'], inplace=True)
+
+            cols_bert = [
+                'feature_bert_{0}'.format(str(s))
+                for s in range(0, 768)
+            ]
+
+            df[cols_bert] = pd.DataFrame(
+                df['bert_array'].values.tolist(),
+                index=df.index
+            )
+
+            # (4) Join 'feature_bert_...'
+            hot[s] = (
+                hot[s]
+                .join(
+                    df[cols_bert],
+                    how='left'
+                )
+            )
+
+        # (5) Fill nan's
+        # (6) Reset index
         hot[s] = (
-            pd.get_dummies(df_exploded['array'])
-            .groupby('id')
-            .sum()
-            .join(
-                df['feature_sent_score'],
-                how='left'
-                )
-            .join(
-                df[cols],
-                how='left'
-                )
+            hot[s]
             .fillna(0)
             .reset_index()
-            )
+        )
 
         # If not in 'train', check columns against
         # 'train' and fill missing columns with 0's
@@ -357,7 +440,7 @@ def features(**kwargs):
                     hot[s][r] = 0
 
         # Write data to file
-        path = path.replace('_processed.csv', '_features.csv')
+        path = ('{0}/{1}_features.csv'.format(config.features_path, s))
 
         hot[s].to_csv(path, index=False)
 
@@ -394,16 +477,16 @@ def select(**kwargs):
     print("==> FEATURE SELECTION (ON TRAINING SET ONLY)")
 
     # Defaults
-    alpha = 0.01
-    l1_ratio = 0.05
+    meta['alpha'] = 1.
+    meta['l1_ratio'] = 5.e-4
 
     # If 'alpha' passed through PARAMS
     if 'alpha' in kwargs.keys():
-        alpha = kwargs['alpha']
+        meta['alpha'] = kwargs['alpha']
 
     # If 'l1_ratio' passed through PARAMS
     if 'l1_ratio' in kwargs.keys():
-        l1_ratio = kwargs['l1_ratio']
+        meta['l1_ratio'] = kwargs['l1_ratio']
 
     # Load data from file
 
@@ -415,32 +498,52 @@ def select(**kwargs):
 
     # Load data from file
 
-    path = ('{0}/train_features.csv'.format(config.data_path))
+    path = ('{0}/train_features.csv'.format(config.features_path))
 
     df_feat = pd.read_csv(path)
 
     df_feat.set_index('id', inplace=True)
 
-    # Fit an ElasticNet with some amount of Lasso
-    clf = ElasticNet(alpha=alpha, l1_ratio=l1_ratio)
+    # Features: regex
+    cols_regex = np.array(
+        [
+            k for k in df_feat.columns
+            if not k.startswith('feature_')
+        ]
+    )
 
-    clf.fit(df_feat, df_target)
+    # Features: other (vaderSentiment, Glove, Bert)
+    cols_other = np.array(
+        [
+            k for k in df_feat.columns
+            if k.startswith('feature_')
+        ]
+    )
+
+    # Fit an ElasticNet with some amount of Lasso
+    clf = ElasticNet(
+        alpha=meta['alpha'],
+        l1_ratio=meta['l1_ratio']
+    )
+
+    clf.fit(df_feat[cols_regex], df_target)
 
     # ElasticNet coefficients
     coefs = np.array(clf.coef_)
 
     # Features with non-zero ElasticNet coefficients
-    cols = np.array(df_feat.columns)
+    best_features = cols_regex[np.abs(coefs) > 1.e-12]
 
-    best_features = cols[np.abs(coefs) > 1.e-12]
+    # Include all 'other' features (vaderSentiment, Glove, Bert)
+    best_features = np.append(best_features, cols_other)
 
     # Document parameter values
 
-    s = 'alpha = {0}'.format(str(alpha))
+    s = 'alpha = {0}'.format(str(meta['alpha']))
 
     best_features = np.insert(best_features, 0, s)
 
-    s = 'l1_ratio = {0}'.format(str(l1_ratio))
+    s = 'l1_ratio = {0}'.format(str(meta['l1_ratio']))
 
     best_features = np.insert(best_features, 0, s)
 
@@ -448,15 +551,15 @@ def select(**kwargs):
 
     path = (
         '{0}/{1}_feature_selection.txt'
-        .format(config.models_path, timestr)
-        )
+        .format(config.models_path, meta['timestr'])
+    )
 
     np.savetxt(path, best_features, delimiter=',', fmt='%s')
 
     print(
         "    ==> BEST FEATURES WRITTEN TO FILE\n        {0}"
         .format(path)
-        )
+    )
 
     print('\n{0}'.format(best_features))
 
@@ -471,24 +574,25 @@ def recover_fs(kwargs):
     ----------
     filename_fs: str
                 Filename where to read list of features
+                (not necessary when executing $ make run)
     """
 
-    # Default based on Global Variable `timestr`
-    filename_fs = (
+    # Default based on Global `meta['timestr']`
+    meta['filename_fs'] = (
         '{0}_feature_selection.txt'
-        .format(timestr)
-        )
+        .format(meta['timestr'])
+    )
 
     # If 'filename_fs' passed through PARAMS
     if 'filename_fs' in kwargs.keys():
-        filename_fs = (
+        meta['filename_fs'] = (
             kwargs['filename_fs']
         )
 
     print(
         "    ==> USING FEATURES LIST FROM FILE\n    {0} :"
-        .format(filename_fs)
-        )
+        .format(meta['filename_fs'])
+    )
 
     # Load features from file (skip first 2 rows)
 
@@ -496,9 +600,9 @@ def recover_fs(kwargs):
         '{0}/{1}'
         .format(
             config.models_path,
-            filename_fs
-            )
+            meta['filename_fs']
         )
+    )
 
     try:
 
@@ -507,7 +611,7 @@ def recover_fs(kwargs):
             delimiter='\n',
             skiprows=2,
             dtype='str'
-            )
+        )
 
     except OSError:
 
@@ -574,31 +678,73 @@ def train(**kwargs):
     print("==> TRAINING THE MODEL!")
 
     # Defaults
-    n_estimators = 10000
-    max_depth = 8
-    min_samples_split = 250
-    n_jobs = -2
-    random_state = 43
+    meta['n_estimators'] = [
+        150,
+        300,
+        450,
+        600,
+        750,
+        900,
+        1050,
+        1200
+    ]
+
+    meta['max_depth'] = [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+    ]
+
+    meta['min_samples_split'] = [
+        25,
+        50,
+        75,
+        150,
+        200,
+        250,
+        300,
+        350,
+        400,
+        450,
+        500
+    ]
+
+    meta['n_jobs'] = -2
+    meta['random_state'] = 43
+    meta['class_weight'] = 'balanced'
 
     # If 'n_estimators' passed through PARAMS
     if 'n_estimators' in kwargs.keys():
-        n_estimators = kwargs['n_estimators']
+        meta['n_estimators'] = kwargs['n_estimators']
 
     # If 'max_depth' passed through PARAMS
     if 'max_depth' in kwargs.keys():
-        max_depth = kwargs['max_depth']
+        meta['max_depth'] = kwargs['max_depth']
 
     # If 'min_samples_split' passed through PARAMS
     if 'min_samples_split' in kwargs.keys():
-        min_samples_split = kwargs['min_samples_split']
+        meta['min_samples_split'] = kwargs['min_samples_split']
 
     # If 'n_jobs' passed through PARAMS
     if 'n_jobs' in kwargs.keys():
-        n_jobs = kwargs['n_jobs']
+        meta['n_jobs'] = kwargs['n_jobs']
 
     # If 'random_state' passed through PARAMS
     if 'random_state' in kwargs.keys():
-        random_state = kwargs['random_state']
+        meta['random_state'] = kwargs['random_state']
+
+    # Store the grid in a dictionary
+    grid = {}
+
+    grid['n_estimators'] = meta['n_estimators']
+    grid['max_depth'] = meta['max_depth']
+    grid['min_samples_split'] = meta['min_samples_split']
 
     # Recover `best_features`
     best_features = recover_fs(kwargs)
@@ -615,7 +761,7 @@ def train(**kwargs):
 
     # Load data from file
 
-    path = ('{0}/train_features.csv'.format(config.data_path))
+    path = ('{0}/train_features.csv'.format(config.features_path))
 
     df_feat = pd.read_csv(path)
 
@@ -624,38 +770,48 @@ def train(**kwargs):
     df_feat.sort_index(axis=0, inplace=True)
 
     # Create the model
-    clf = RandomForestClassifier(
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        min_samples_split=min_samples_split,
-        n_jobs=n_jobs,
-        random_state=random_state
-        )
+    rf = RandomForestClassifier(
+        random_state=meta['random_state'],
+        class_weight=meta['class_weight']
+    )
 
-    # Fit model on training data
-    clf.fit(df_feat[best_features], df_target['target'])
+    rf_random = RandomizedSearchCV(
+        estimator=rf,
+        param_distributions=grid,
+        n_iter=100,
+        cv=5,
+        verbose=2,
+        random_state=meta['random_state'],
+        n_jobs=meta['n_jobs']
+    )
+
+    # Fit the random search model
+    rf_random.fit(df_feat[best_features], df_target['target'])
+
+    # Update `meta` with best hyperparameters
+    meta['best_params_'] = rf_random.best_params_
 
     # Save model
 
     filename = (
         '{0}_model.joblib'
-        .format(timestr)
-        )
+        .format(meta['timestr'])
+    )
 
     path = (
         '{0}/{1}'
         .format(
             config.models_path,
             filename
-            )
         )
+    )
 
-    joblib.dump(clf, path)
+    joblib.dump(rf_random, path)
 
     print(
         "    ==> MODEL PICKLED AT\n    {0} :"
         .format(path)
-        )
+    )
 
     pass
 
@@ -685,38 +841,34 @@ def metadata(**kwargs):
 
     References
     ----------
-    https://scikit-learn.org/stable/modules/generated/sklearn.metrics.classification_report.html
+    https://scikit-learn.org/stable/modules/generated/
+    sklearn.metrics.classification_report.html
     """
     print("==> TESTING MODEL PERFORMANCE AND GENERATING METADATA")
 
     # Load model
     filename = (
         '{0}_model.joblib'
-        .format(timestr)
-        )
+        .format(meta['timestr'])
+    )
 
     path = (
         '{0}/{1}'
         .format(
             config.models_path,
             filename
-            )
         )
+    )
 
     print(
         "    ==> USING MODEL FROM FILE\n    {0} :"
         .format(filename)
-        )
+    )
 
     clf = joblib.load(path)
 
     # Recover `best_features`
     best_features = recover_fs(kwargs)
-
-    y_true = {}
-    y_pred = {}
-    proba = {}
-    x = {}
 
     for s in ['train', 'valid']:
 
@@ -726,39 +878,69 @@ def metadata(**kwargs):
 
         path = ('{0}/{1}.csv'.format(config.data_path, s))
 
-        y_true[s] = pd.read_csv(path, usecols=['id', 'target'])
+        y_true = pd.read_csv(path, usecols=['id', 'target'])
 
-        y_true[s].set_index('id', inplace=True)
+        y_true.set_index('id', inplace=True)
 
-        y_true[s].sort_index(axis=0, inplace=True)
+        y_true.sort_index(axis=0, inplace=True)
 
         # Load data from file
 
-        path = ('{0}/{1}_features.csv'.format(config.data_path, s))
+        path = ('{0}/{1}_features.csv'.format(config.features_path, s))
 
-        x[s] = pd.read_csv(path)
+        x = pd.read_csv(path)
 
-        x[s].set_index('id', inplace=True)
+        x.set_index('id', inplace=True)
 
-        x[s].sort_index(axis=0, inplace=True)
+        x.sort_index(axis=0, inplace=True)
 
-        thr = 0.5
+        proba = clf.predict_proba(x[best_features])[:, 1]
 
-        proba[s] = clf.predict_proba(x[s][best_features])[:, 1]
+        # Performance extracted from the "ROC curve"
+        fpr, tpr, thr = (
+            metrics.roc_curve(
+            y_true=y_true.values,
+            y_score=proba,
+            pos_label=1,
+            drop_intermediate=False
+            )
+        )
 
-        y_pred[s] = (proba[s] > thr).astype(int)
+        meta['AUC'] = metrics.auc(fpr, tpr)
+        
+        diff = np.abs(tpr - fpr)
+        
+        # Kolmogorov–Smirnov
+        meta['KS'] = np.max(diff)
+        
+        # Numpy index of the maximum separation between TPR and FPR
+        ks_idx = np.argmax(diff)
+        
+        # Update optimum threshold based on KS criterium
+        # -- Last updated will be 'valid', to be used later
+        meta['optimal_threshold'] = thr[ks_idx]
 
-        report = classification_report(y_true[s], y_pred[s], output_dict=True)
+        # Predicted classes based on 'optimal_threshold'
+        y_pred = (proba >= meta['optimal_threshold']).astype(int)
 
-        print(report)
+        meta['classification_report'] = (
+            metrics.classification_report(
+                y_true,
+                y_pred,
+                output_dict=True
+            )
+        )
+
+        print(meta)
 
         filename = (
             '{0}/{1}_metadata_{2}.json'
-            .format(config.models_path, timestr, s)
-            )
+            .format(config.models_path, meta['timestr'], s)
+        )
 
+        # Export to JSON
         with open(filename, 'w') as fp:
-            json.dump(report, fp)
+            json.dump(meta, fp, indent=4)
 
     pass
 
@@ -776,65 +958,66 @@ def predict(**kwargs):
     # Load model
     filename = (
         '{0}_model.joblib'
-        .format(timestr)
-        )
+        .format(meta['timestr'])
+    )
 
     path = (
         '{0}/{1}'
         .format(
             config.models_path,
             filename
-            )
         )
+    )
 
     print(
         "==> USING MODEL FROM FILE\n    {0} :"
         .format(filename)
-        )
+    )
 
     clf = joblib.load(path)
 
     # Recover `best_features`
     best_features = recover_fs(kwargs)
 
-    y_pred = {}
-    proba = {}
-    x = {}
+    for s in ['train', 'valid', 'test']:
 
-    # Load data from file
+        # Load data from file
 
-    path = ('{0}/test_features.csv'.format(config.data_path))
+        path = ('{0}/{1}_features.csv'.format(config.features_path, s))
 
-    print("    ==> PREDICT DATASET\n    {0}".format(path))
+        print("    ==> PREDICT DATASET\n    {0}".format(path))
 
-    x = pd.read_csv(path)
+        x = pd.read_csv(path)
 
-    x.set_index('id', inplace=True)
+        x.set_index('id', inplace=True)
 
-    x.sort_index(axis=0, inplace=True)
+        x.sort_index(axis=0, inplace=True)
 
-    thr = 0.5
+        proba = clf.predict_proba(x[best_features])[:, 1]
 
-    proba = clf.predict_proba(x[best_features])[:, 1]
+        # Predicted classes based on 'optimal_threshold'
+        # Using 'optimal_threshold' from 'valid' set
+        y_pred = (proba >= meta['optimal_threshold']).astype(int)
 
-    y_pred = (proba >= thr).astype(int)
-
-    output = pd.DataFrame(
-        {
-            'id': x.reset_index()['id'].values,
-            'target': y_pred
-        }
-    )
-
-    path = (
-        '{0}/{1}_test_predict.json'
-        .format(config.predict_path, timestr)
+        output = pd.DataFrame(
+            {
+                'id': x.reset_index()['id'].values,
+                'prob_1': proba,
+                'class': y_pred
+            }
         )
 
-    output.to_csv(path, index=False)
+        path = (
+            '{0}/{1}_{2}_predict.csv'
+            .format(config.predict_path, meta['timestr'], s)
+        )
+
+        output.to_csv(path, index=False)
 
     pass
 
+
+# --- RUN PIPELINE ---
 
 def run(**kwargs):
     """

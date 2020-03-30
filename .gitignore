@@ -99,6 +99,9 @@ venv.bak/
 # Pycharm project settings
 .idea
 
+# VS Code project settings
+.vscode
+
 # Rope project settings
 .ropeproject
 
@@ -108,8 +111,13 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-# project workspace
-workspace/download
-
 # Model persistence
 .joblib
+
+# Project workspace
+workspace/download/*
+workspace/features/*
+workspace/predict/*
+
+# Keep all .gitkeep files
+!.gitkeep

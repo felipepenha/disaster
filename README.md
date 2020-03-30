@@ -1,11 +1,22 @@
 # [`disaster`]
 
-Natural Language Processing model for classifying tweets as being associated to a disaster or not. 
+
+A reproducible and versioned Natural Language Processing pipeline for classifying tweets as being associated to a disaster or not.
+
+
+The current best performance is at 78% macro avg f1-score.
+
+
+## Pipeline
+
+![](/images/disaster_pipeline.png)
 
 
 ## Data
 
+
 The dataset is composed by 7,613 tweets (textual data only) labeled as `1` (disaster) or `0` (not disaster).
+
 
 The actual time of the disaster event is irrelevant, e.g. tweets about Hiroshima has been consistently labeled as `1`, e.g.
 
@@ -48,30 +59,28 @@ In this project, we chose to only use `text` to predict the `target`, to avoid d
 
 ## Folder structure
 
+
 * [analysis](./analysis/): contains jupyter notebooks for experimentation and analysis
 * [disaster](./disaster/): main Python package with source of the model
 * [tests](./tests/): contains files used for unit tests
 * [workspace](./workspace/): were inputs and outputs live
 
-
 ```
 .
 ├── analysis
-│   ├── ...
+│   ├── out
+│   └── performance.ipynb
 ├── CONTRIBUTING.md
 ├── disaster
+│   ├── bert_embedding.py
 │   ├── config.py
-│   ├── downloads.py
+│   ├── glove_embedding.py
 │   ├── __init__.py
-│   └── main.py
+│   ├── main.py
+│   └── __pycache__
 ├── disaster.egg-info
-│   ├── dependency_links.txt
-│   ├── entry_points.txt
-│   ├── PKG-INFO
-│   ├── requires.txt
-│   ├── SOURCES.txt
-│   └── top_level.txt
 ├── Dockerfile
+├── images
 ├── Makefile
 ├── README.md
 ├── requirements.txt
@@ -79,18 +88,15 @@ In this project, we chose to only use `text` to predict the `target`, to avoid d
 ├── tests
 │   ├── conftest.py
 │   ├── __init__.py
-│   └── test_example.py
+│   └── test_run.py
 └── workspace
     ├── data
     ├── download
+    ├── features
     ├── models
     └── predict
 ```
 
-
-## Pipeline
-
-![](/images/disaster_pipeline.png)
 
 ## Usage
 
@@ -152,6 +158,12 @@ The following `kwargs` are available:
 
     filename_fs: str
                 Filename where to read list of features
+                (not necessary when executing $ make run)
+
+    opt_features: List[str]
+                    List of type of features to include
+                    Possible values:
+                    'regex', 'vaderSentiment', 'glove', 'bert'
 
     n_estimators: int
                     RandomForestClassifier hyperparameter
@@ -179,6 +191,17 @@ The following `kwargs` are available:
                     and the sampling of the features to
                     consider when looking for the best split
                     at each node (if max_features < n_features)
+
+    Examples
+    --------
+    make run PARAMS=\
+    "--alpha=0.01 --l1_ratio=0.01 \
+    --opt_features=[regex,vaderSentiment,glove,bert] \
+    --n_estimators=500 \
+    --max_depth=10 \
+    --min_samples_split=10 0\
+    --n_jobs=4 \
+    --random_state=1"
 ```
 
 
@@ -194,7 +217,7 @@ make select
 ```
 
 
-The latter will generate a file named `[timestr]_feature_selection.txt` where `timestr` is of the form `'%Y%m%d%H%M%S'`. Next,
+The latter will generate a file named `[timestamp]_feature_selection.txt` where `timestr` is of the form `'%Y%m%d%H%M%S'`. Next,
 
 ```
 make skip PARAMS="--filename_fs='[timestr]_feature_selection.txt'"
@@ -203,12 +226,6 @@ make skip PARAMS="--filename_fs='[timestr]_feature_selection.txt'"
 
 At this point, you can change the hyperparameters with kwargs passed to `PARAMS` for further tunning the model beyond the defaults.
 
-
-To create automated documentation:
-
-```
-make docs
-```
 
 Finally, to release a new version:
 
@@ -219,3 +236,59 @@ make release VERSION=X.Y.Z
 ```
 
 Check [Travis CI](https://travis-ci.org/) to monitor Continuous Integration.
+
+## Metadata
+
+Experiments metadata are found at 
+
+* `/workspace/models/[timestamp]_metadata_train.json`
+* `/workspace/models/[timestamp]_metadata_valid.json`
+
+For example, the best performance obtained so far (on the validation set) has been logged as
+
+```
+{
+    "timestr": "20200319041907",
+    "opt_features": [
+        "regex",
+        "vaderSentiment",
+        "glove"
+    ],
+    "alpha": 1.0,
+    "l1_ratio": 0.0005,
+    "n_estimators": 1000,
+    "max_depth": 8,
+    "min_samples_split": 250,
+    "n_jobs": -2,
+    "random_state": 43,
+    "class_weight": "balanced",
+    "filename_fs": "20200319041907_feature_selection.txt",
+    "classification_report": {
+        "0": {
+            "precision": 0.8087035358114234,
+            "recall": 0.7992831541218638,
+            "f1-score": 0.80396575033799,
+            "support": 1116
+        },
+        "1": {
+            "precision": 0.7304452466907341,
+            "recall": 0.7420537897310513,
+            "f1-score": 0.7362037598544572,
+            "support": 818
+        },
+        "accuracy": 0.7750775594622544,
+        "macro avg": {
+            "precision": 0.7695743912510787,
+            "recall": 0.7706684719264576,
+            "f1-score": 0.7700847550962235,
+            "support": 1934
+        },
+        "weighted avg": {
+            "precision": 0.7756035976000872,
+            "recall": 0.7750775594622544,
+            "f1-score": 0.7753053014157925,
+            "support": 1934
+        }
+    }
+}
+```
