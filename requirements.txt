@@ -34,7 +34,7 @@ vaderSentiment==3.2.1
 #	RUN pip install nltk==3.4.5
 #	RUN python -m nltk.downloader -d /nltk_data punkt
 
-mxnet==1.6.0
+mxnet==1.9.1
 gluonnlp==0.9.1
 
 ## ML
